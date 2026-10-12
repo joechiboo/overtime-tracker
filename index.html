@@ -254,13 +254,14 @@ function render(){
   const foldRow = (w, label, t, open) => `<tr class="appr ${open?'open':''}" data-w="${w}">
       <td class="d">${label}</td><td>${h(t.p)}</td><td>${h(t.a)}</td><td>${diffCell(t.p,t.a,true)}</td><td class="n"></td></tr>`;
 
-  let html = '', cP = 0, cA = 0;
-  const cumRow = () => `<tr class="cum"><td class="d">週累計</td><td>${h(cP)}</td><td>${h(cA)}</td><td>${diffCell(cP,cA,true)}</td><td class="n"></td></tr>`;
+  // 週累計：已有實際用實際，否則用預計，自本期起累加
+  let html = '', cum = 0;
+  const cumRow = () => `<tr class="cum"><td class="d">週累計（實際＋預計）</td><td colspan="3" class="${cum > MONTH_LIMIT ? 'over' : ''}">${h(cum)} / ${MONTH_LIMIT} hr</td><td class="n"></td></tr>`;
   for (const w of weeks){
     const done = w.days.filter(d => fmt(d) <= cutoff);
     const rest = w.days.filter(d => fmt(d) > cutoff);
     const open = !!expanded[w.key], wt = sums(w.days);
-    cP += wt.p; cA += wt.a;
+    cum += w.days.reduce((t,d) => { const r = data[fmt(d)] || {}; return t + (num(r.actual) ?? num(r.planned) ?? 0); }, 0);
     if (done.length === w.days.length && !open){
       // 整週已過：只留一列週小計
       html += foldRow(w.key, `週小計 ${range(w.days)}`, wt, false) + cumRow();
