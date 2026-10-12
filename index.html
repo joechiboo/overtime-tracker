@@ -225,39 +225,44 @@ function render(){
     weeks[weeks.length-1].days.push(new Date(d));
   }
 
+  // 最後一天有填實際時數的日期；它（含）以前的日子全部收合
+  let cutoff = '';
+  for (const k in data) if (num(data[k].actual) !== null && k > cutoff) cutoff = k;
+
+  const dayRow = d => {
+    const k = fmt(d), r = data[k] || {}, p = num(r.planned), a = num(r.actual);
+    // 週日預設隱藏；若當天已有資料則仍顯示，避免漏看
+    if (d.getDay()===0 && !showSun && p===null && a===null && !r.note) return '';
+    const past = k <= todayStr;
+    const we = d.getDay()===0 || d.getDay()===6;
+    const overDay = !we && a !== null && a > 4;
+    const disPast = (editable && past) ? '' : 'disabled';
+    return `<tr data-d="${k}" class="${we?'we':''} ${k===todayStr?'today':''}">
+      <td class="d">${md(d)}（${WD[d.getDay()]}）</td>
+      <td><input type="number" step="0.5" min="0" max="12" data-f="planned" value="${p ?? ''}" ${dis}></td>
+      <td><input type="number" step="0.5" min="0" max="12" data-f="actual" value="${a ?? ''}" ${disPast} class="${overDay?'over':''}"></td>
+      <td>${a===null ? '' : diffCell(p ?? 0, a)}</td>
+      <td class="n"><input type="text" data-f="note" value="${(r.note||'').replace(/"/g,'&quot;')}" ${dis}></td>
+    </tr>`;
+  };
+  const sums = days => days.reduce((t,d) => { const r = data[fmt(d)] || {}; t.p += num(r.planned) ?? 0; t.a += num(r.actual) ?? 0; return t; }, { p:0, a:0 });
+  const range = days => md(days[0]) + (days.length > 1 ? '–' + md(days[days.length-1]) : '');
+  const foldRow = (w, label, t, open) => `<tr class="appr ${open?'open':''}" data-w="${w}">
+      <td class="d">${label}</td><td>${h(t.p)}</td><td>${h(t.a)}</td><td>${diffCell(t.p,t.a,true)}</td><td class="n"></td></tr>`;
+
   let html = '';
   for (const w of weeks){
-    let wP = 0, wA = 0, aP = 0, aA = 0, aN = 0, aFirst = null, aLast = null;
-    for (const d of w.days){
-      const r = data[fmt(d)] || {};
-      const p = num(r.planned), a = num(r.actual);
-      wP += p ?? 0; wA += a ?? 0;
-      if (a !== null){ aP += p ?? 0; aA += a ?? 0; aN++; aFirst = aFirst || d; aLast = d; }
+    const done = w.days.filter(d => fmt(d) <= cutoff);
+    const rest = w.days.filter(d => fmt(d) > cutoff);
+    const open = !!expanded[w.key], wt = sums(w.days);
+    if (done.length === w.days.length && !open){
+      // 整週已過：只留一列週小計
+      html += foldRow(w.key, `週小計 ${range(w.days)}`, wt, false);
+      continue;
     }
-    const open = !!expanded[w.key];
-    if (aN){
-      html += `<tr class="appr ${open?'open':''}" data-w="${w.key}">
-        <td class="d">已審核 ${aN} 天（${md(aFirst)}${aN>1?'–'+md(aLast):''}）</td>
-        <td>${h(aP)}</td><td>${h(aA)}</td><td>${diffCell(aP,aA,true)}</td><td class="n"></td></tr>`;
-    }
-    for (const d of w.days){
-      const k = fmt(d), r = data[k] || {}, p = num(r.planned), a = num(r.actual);
-      if (a !== null && !open) continue;
-      // 週日預設隱藏；若當天已有資料則仍顯示，避免漏看
-      if (d.getDay()===0 && !showSun && p===null && a===null && !r.note) continue;
-      const past = k <= todayStr;
-      const we = d.getDay()===0 || d.getDay()===6;
-      const overDay = !we && a !== null && a > 4;
-      const disPast = (editable && past) ? '' : 'disabled';
-      html += `<tr data-d="${k}" class="${we?'we':''} ${k===todayStr?'today':''}">
-        <td class="d">${md(d)}（${WD[d.getDay()]}）</td>
-        <td><input type="number" step="0.5" min="0" max="12" data-f="planned" value="${p ?? ''}" ${dis}></td>
-        <td><input type="number" step="0.5" min="0" max="12" data-f="actual" value="${a ?? ''}" ${disPast} class="${overDay?'over':''}"></td>
-        <td>${a===null ? '' : diffCell(p ?? 0, a)}</td>
-        <td class="n"><input type="text" data-f="note" value="${(r.note||'').replace(/"/g,'&quot;')}" ${dis}></td>
-      </tr>`;
-    }
-    html += `<tr class="sum"><td class="d">週小計</td><td>${h(wP)}</td><td>${h(wA)}</td><td>${diffCell(wP,wA,true)}</td><td class="n"></td></tr>`;
+    if (done.length) html += foldRow(w.key, `已審核 ${range(done)}`, sums(done), open);
+    for (const d of (open ? w.days : rest)) html += dayRow(d);
+    html += `<tr class="sum"><td class="d">週小計</td><td>${h(wt.p)}</td><td>${h(wt.a)}</td><td>${diffCell(wt.p,wt.a,true)}</td><td class="n"></td></tr>`;
   }
   $('tbody').innerHTML = html;
   $('tbody').querySelectorAll('tr[data-d] input').forEach(i => i.addEventListener('change', () => save(i.closest('tr'))));
