@@ -96,7 +96,7 @@ td.n,th.n{display:none} /* 備註欄暫時隱藏 */
     <div class="row" style="justify-content:space-between">
       <div class="row">
         <button class="ghost" id="today">回到本期</button>
-        <label class="muted row" style="gap:4px;cursor:pointer"><input type="checkbox" id="showSun" style="width:auto">顯示週日</label>
+        <label class="muted row" style="gap:4px;cursor:pointer"><input type="checkbox" id="showSun" style="width:auto">顯示六日</label>
       </div>
     </div>
   </div>
@@ -234,8 +234,8 @@ function render(){
 
   const dayRow = d => {
     const k = fmt(d), r = data[k] || {}, p = num(r.planned), a = num(r.actual);
-    // 週日預設隱藏；若當天已有資料則仍顯示，避免漏看
-    if (d.getDay()===0 && !showSun && p===null && a===null && !r.note) return '';
+    // 六日預設隱藏；若當天已有資料則仍顯示，避免漏看
+    if ((d.getDay()===0 || d.getDay()===6) && !showSun && p===null && a===null && !r.note) return '';
     const past = k <= todayStr;
     const we = d.getDay()===0 || d.getDay()===6;
     const overDay = !we && a !== null && a > 4;
