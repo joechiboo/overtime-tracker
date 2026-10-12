@@ -48,6 +48,7 @@ tr.today td{background:var(--today)}
 tr.appr td{color:var(--muted);cursor:pointer;font-size:13px}
 tr.appr td.d::before{content:'▸ ';}
 tr.appr.open td.d::before{content:'▾ ';}
+tr.cum td{color:var(--muted);font-size:12px;padding-top:2px;border-bottom:2px solid var(--line)}
 tr.sum td{font-weight:600;background:transparent;color:var(--muted);font-size:13px}
 .over{color:var(--bad);font-weight:600}
 .diff-pos{color:var(--warn)} .diff-neg{color:var(--ok)}
@@ -253,19 +254,21 @@ function render(){
   const foldRow = (w, label, t, open) => `<tr class="appr ${open?'open':''}" data-w="${w}">
       <td class="d">${label}</td><td>${h(t.p)}</td><td>${h(t.a)}</td><td>${diffCell(t.p,t.a,true)}</td><td class="n"></td></tr>`;
 
-  let html = '';
+  let html = '', cP = 0, cA = 0;
+  const cumRow = () => `<tr class="cum"><td class="d">週累計</td><td>${h(cP)}</td><td>${h(cA)}</td><td>${diffCell(cP,cA,true)}</td><td class="n"></td></tr>`;
   for (const w of weeks){
     const done = w.days.filter(d => fmt(d) <= cutoff);
     const rest = w.days.filter(d => fmt(d) > cutoff);
     const open = !!expanded[w.key], wt = sums(w.days);
+    cP += wt.p; cA += wt.a;
     if (done.length === w.days.length && !open){
       // 整週已過：只留一列週小計
-      html += foldRow(w.key, `週小計 ${range(w.days)}`, wt, false);
+      html += foldRow(w.key, `週小計 ${range(w.days)}`, wt, false) + cumRow();
       continue;
     }
     if (done.length) html += foldRow(w.key, `已審核 ${range(done)}`, sums(done), open);
     for (const d of (open ? w.days : rest)) html += dayRow(d);
-    html += `<tr class="sum"><td class="d">週小計</td><td>${h(wt.p)}</td><td>${h(wt.a)}</td><td>${diffCell(wt.p,wt.a,true)}</td><td class="n"></td></tr>`;
+    html += `<tr class="sum"><td class="d">週小計</td><td>${h(wt.p)}</td><td>${h(wt.a)}</td><td>${diffCell(wt.p,wt.a,true)}</td><td class="n"></td></tr>` + cumRow();
   }
   $('tbody').innerHTML = html;
   $('tbody').querySelectorAll('tr[data-d] input').forEach(i => i.addEventListener('change', () => save(i.closest('tr'))));
