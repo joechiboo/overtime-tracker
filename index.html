@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>加班時數追蹤</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{
+  --bg:#f6f7f9;--card:#fff;--text:#1d2330;--muted:#6b7385;--line:#e3e6ec;
+  --accent:#2f6fde;--ok:#2e9d5b;--warn:#d98a12;--bad:#d0443c;--weekend:#f1f3f7;--today:#eaf1ff;
+}
+@media (prefers-color-scheme: dark){
+  :root{--bg:#14161b;--card:#1d2027;--text:#e7e9ee;--muted:#9097a6;--line:#2c313b;
+    --accent:#6b9bff;--weekend:#191c22;--today:#1f2a40;}
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);
+  font:15px/1.5 -apple-system,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif}
+.wrap{max-width:860px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:4px 0 16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
+.hidden{display:none!important}
+input{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%}
+button{font:inherit;border:0;border-radius:8px;padding:8px 14px;background:var(--accent);color:#fff;cursor:pointer}
+button.ghost{background:transparent;color:var(--text);border:1px solid var(--line)}
+.row{display:flex;gap:8px;align-items:center}
+.nav{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px}
+.nav .label{font-weight:600;text-align:center;flex:1}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.stat .k{color:var(--muted);font-size:13px}
+.stat .v{font-size:22px;font-weight:600}
+.stat .v small{font-size:13px;color:var(--muted);font-weight:400}
+.bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:6px}
+.bar i{display:block;height:100%;background:var(--ok)}
+.bar i.warn{background:var(--warn)} .bar i.bad{background:var(--bad)}
+.big{font-size:28px;font-weight:700;color:var(--accent)}
+table{width:100%;border-collapse:collapse}
+th,td{padding:6px 4px;border-bottom:1px solid var(--line);text-align:center}
+th{font-size:13px;color:var(--muted);font-weight:500}
+td.d{text-align:left;white-space:nowrap}
+td input{padding:5px 6px;text-align:center;max-width:76px}
+td.n input{text-align:left;max-width:none}
+tr.we td{background:var(--weekend)}
+tr.today td{background:var(--today)}
+tr.sum td{font-weight:600;background:transparent;color:var(--muted);font-size:13px}
+.over{color:var(--bad);font-weight:600}
+.diff-pos{color:var(--warn)} .diff-neg{color:var(--ok)}
+.toast{position:fixed;right:16px;bottom:16px;background:var(--text);color:var(--bg);padding:8px 14px;border-radius:8px;opacity:0;transition:.2s}
+.toast.show{opacity:.92}
+.muted{color:var(--muted);font-size:13px}
+@media (max-width:560px){ td.n{display:none} th.n{display:none} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>加班時數追蹤</h1>
+
+  <!-- 設定提示 -->
+  <div id="setup" class="card hidden">
+    請先在檔案開頭的 <code>SUPABASE_URL</code> 與 <code>SUPABASE_ANON_KEY</code> 填入你的專案設定。
+  </div>
+
+  <!-- 登入 -->
+  <div id="login" class="card hidden">
+    <div style="display:grid;gap:8px;max-width:320px">
+      <input id="email" type="email" placeholder="Email" autocomplete="username">
+      <input id="pw" type="password" placeholder="密碼" autocomplete="current-password">
+      <button id="btnLogin">登入</button>
+      <div id="loginMsg" class="muted"></div>
+    </div>
+  </div>
+
+  <!-- 主畫面 -->
+  <div id="app" class="hidden">
+    <div class="nav">
+      <button class="ghost" id="prev">◀</button>
+      <div class="label" id="cycleLabel"></div>
+      <button class="ghost" id="next">▶</button>
+    </div>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between;margin-bottom:12px">
+        <div>
+          <div class="muted">本期還可加班</div>
+          <div class="big" id="remain">–</div>
+        </div>
+        <div class="muted" style="text-align:right">月上限 54 hr<br>近三期上限 138 hr</div>
+      </div>
+      <div class="stats" id="stats"></div>
+    </div>
+
+    <div class="card" style="overflow-x:auto">
+      <table>
+        <thead><tr><th style="text-align:left">日期</th><th>預計</th><th>實際</th><th>差異</th><th class="n">備註</th></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+      <div class="muted" style="margin-top:8px">單日正常工時加延長工時不得超過 12 小時，平日加班超過 4 小時以紅字提示。</div>
+    </div>
+
+    <div class="row" style="justify-content:space-between">
+      <div class="row">
+        <button class="ghost" id="today">回到本期</button>
+        <label class="muted row" style="gap:4px;cursor:pointer"><input type="checkbox" id="showSun" style="width:auto">顯示週日</label>
+      </div>
+      <button class="ghost" id="logout">登出</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ===== 設定 ===== */
+const SUPABASE_URL = 'https://YOUR-PROJECT.supabase.co';
+const SUPABASE_ANON_KEY = 'YOUR-ANON-KEY';
+const MONTH_LIMIT = 54, ROLL_LIMIT = 138, CYCLE_DAY = 21;
+
+/* ===== 日期工具 ===== */
+const pad = n => String(n).padStart(2,'0');
+const fmt = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const md  = d => `${d.getMonth()+1}/${d.getDate()}`;
+const WD  = ['日','一','二','三','四','五','六'];
+const cycleStartOf = d => d.getDate() >= CYCLE_DAY
+  ? new Date(d.getFullYear(), d.getMonth(), CYCLE_DAY)
+  : new Date(d.getFullYear(), d.getMonth()-1, CYCLE_DAY);
+const shiftCycle = (s,n) => new Date(s.getFullYear(), s.getMonth()+n, CYCLE_DAY);
+const cycleEnd = s => new Date(s.getFullYear(), s.getMonth()+1, CYCLE_DAY-1);
+const mondayOf = d => { const x = new Date(d); x.setDate(x.getDate() - ((x.getDay()+6)%7)); return fmt(x); };
+const num = v => (v === null || v === undefined || v === '') ? null : Number(v);
+const h = v => (Math.round(v*10)/10).toString();
+
+/* ===== 狀態 ===== */
+const $ = id => document.getElementById(id);
+let sb, user, viewStart = cycleStartOf(new Date()), data = {};
+
+function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),1400); }
+function show(id){ ['setup','login','app'].forEach(x => $(x).classList.toggle('hidden', x!==id)); }
+
+/* ===== 啟動 ===== */
+(async function init(){
+  if (SUPABASE_URL.includes('YOUR-PROJECT')) return show('setup');
+  sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const { data:{ session } } = await sb.auth.getSession();
+  if (session) { user = session.user; start(); } else show('login');
+})();
+
+$('btnLogin').onclick = async () => {
+  $('loginMsg').textContent = '登入中…';
+  const { data:d, error } = await sb.auth.signInWithPassword({ email:$('email').value.trim(), password:$('pw').value });
+  if (error) return $('loginMsg').textContent = '登入失敗：' + error.message;
+  user = d.user; start();
+};
+$('pw').addEventListener('keydown', e => { if (e.key==='Enter') $('btnLogin').click(); });
+$('logout').onclick = async () => { await sb.auth.signOut(); show('login'); };
+$('prev').onclick  = () => { viewStart = shiftCycle(viewStart,-1); load(); };
+$('next').onclick  = () => { viewStart = shiftCycle(viewStart, 1); load(); };
+$('today').onclick = () => { viewStart = cycleStartOf(new Date()); load(); };
+
+let showSun = false;
+try { showSun = localStorage.getItem('ot_showSun') === '1'; } catch(e){}
+$('showSun').checked = showSun;
+$('showSun').onchange = e => {
+  showSun = e.target.checked;
+  try { localStorage.setItem('ot_showSun', showSun ? '1' : '0'); } catch(e){}
+  render();
+};
+
+function start(){ show('app'); load(); }
+
+/* ===== 讀取：本期＋前兩期 ===== */
+async function load(){
+  const from = fmt(shiftCycle(viewStart,-2)), to = fmt(cycleEnd(viewStart));
+  const { data:rows, error } = await sb.from('overtime_days')
+    .select('work_date,planned,actual,note')
+    .gte('work_date', from).lte('work_date', to);
+  if (error) return toast('讀取失敗：' + error.message);
+  data = {};
+  rows.forEach(r => data[r.work_date] = r);
+  render();
+}
+
+/* ===== 統計 ===== */
+function sumRange(s, e){
+  let act = 0, plan = 0, proj = 0;
+  for (let d = new Date(s); d <= e; d.setDate(d.getDate()+1)){
+    const r = data[fmt(d)]; if (!r) continue;
+    const a = num(r.actual), p = num(r.planned);
+    act  += a ?? 0;
+    plan += p ?? 0;
+    proj += a ?? p ?? 0;   // 已填實際用實際，未填用預計
+  }
+  return { act, plan, proj };
+}
+
+function stat(k, v, limit){
+  const pct = Math.min(100, v/limit*100);
+  const cls = v > limit ? 'bad' : pct >= 85 ? 'warn' : '';
+  return `<div class="stat"><div class="k">${k}</div>
+    <div class="v ${v>limit?'over':''}">${h(v)} <small>/ ${limit}</small></div>
+    <div class="bar"><i class="${cls}" style="width:${pct}%"></i></div></div>`;
+}
+
+/* ===== 畫面 ===== */
+function render(){
+  const s = viewStart, e = cycleEnd(s), rs = shiftCycle(s,-2);
+  $('cycleLabel').textContent = `${s.getFullYear()}/${md(s)} – ${e.getFullYear()}/${md(e)}`;
+
+  const cur = sumRange(s, e), roll = sumRange(rs, e);
+  const remain = Math.min(MONTH_LIMIT - cur.act, ROLL_LIMIT - roll.act);
+  $('remain').textContent = remain <= 0 ? '0 hr（已達上限）' : `${h(remain)} hr`;
+  $('remain').className = 'big' + (remain <= 0 ? ' over' : '');
+
+  $('stats').innerHTML =
+    stat('本期實際', cur.act, MONTH_LIMIT) +
+    stat('本期預估（實際＋未發生的預計）', cur.proj, MONTH_LIMIT) +
+    stat(`近三期實際（${md(rs)} 起）`, roll.act, ROLL_LIMIT) +
+    stat('近三期預估', roll.proj, ROLL_LIMIT) +
+    `<div class="stat"><div class="k">本期預計合計</div><div class="v">${h(cur.plan)} <small>hr</small></div></div>`;
+
+  const todayStr = fmt(new Date());
+  let html = '', wk = null, wP = 0, wA = 0;
+  const flush = () => { if (wk) html += `<tr class="sum"><td class="d">週小計</td><td>${h(wP)}</td><td>${h(wA)}</td><td>${diffCell(wP,wA,true)}</td><td class="n"></td></tr>`; };
+
+  for (let d = new Date(s); d <= e; d.setDate(d.getDate()+1)){
+    const k = fmt(d), mk = mondayOf(d);
+    if (mk !== wk){ flush(); wk = mk; wP = 0; wA = 0; }
+    const r = data[k] || {}, p = num(r.planned), a = num(r.actual);
+    wP += p ?? 0; wA += a ?? 0;
+    // 週日預設隱藏；若當天已有資料則仍顯示，避免漏看
+    if (d.getDay()===0 && !showSun && p===null && a===null && !r.note) continue;
+    const we = d.getDay()===0 || d.getDay()===6;
+    const overDay = !we && a !== null && a > 4;
+    html += `<tr data-d="${k}" class="${we?'we':''} ${k===todayStr?'today':''}">
+      <td class="d">${md(d)}（${WD[d.getDay()]}）</td>
+      <td><input type="number" step="0.5" min="0" max="12" data-f="planned" value="${p ?? ''}"></td>
+      <td><input type="number" step="0.5" min="0" max="12" data-f="actual" value="${a ?? ''}" class="${overDay?'over':''}"></td>
+      <td>${a===null ? '' : diffCell(p ?? 0, a)}</td>
+      <td class="n"><input type="text" data-f="note" value="${(r.note||'').replace(/"/g,'&quot;')}"></td>
+    </tr>`;
+  }
+  flush();
+  $('tbody').innerHTML = html;
+  $('tbody').querySelectorAll('input').forEach(i => i.addEventListener('change', () => save(i.closest('tr'))));
+}
+
+function diffCell(p, a, plain){
+  const v = a - p; if (!v) return plain ? '0' : '';
+  return `<span class="${v>0?'diff-pos':'diff-neg'}">${v>0?'+':''}${h(v)}</span>`;
+}
+
+/* ===== 儲存 ===== */
+async function save(tr){
+  const k = tr.dataset.d, get = f => tr.querySelector(`[data-f="${f}"]`).value;
+  const planned = num(get('planned')), actual = num(get('actual')), note = get('note').trim() || null;
+  for (const v of [planned, actual]) if (v !== null && (isNaN(v) || v < 0 || v > 12)) return toast('時數需介於 0–12');
+
+  let error;
+  if (planned === null && actual === null && !note){
+    ({ error } = await sb.from('overtime_days').delete().eq('user_id', user.id).eq('work_date', k));
+    delete data[k];
+  } else {
+    const row = { user_id:user.id, work_date:k, planned, actual, note, updated_at:new Date().toISOString() };
+    ({ error } = await sb.from('overtime_days').upsert(row, { onConflict:'user_id,work_date' }));
+    data[k] = row;
+  }
+  if (error) return toast('儲存失敗：' + error.message);
+  toast('已儲存');
+  render();
+}
+</script>
+</body>
+</html>
