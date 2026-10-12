@@ -18,7 +18,7 @@
 body{margin:0;background:var(--bg);color:var(--text);
   font:15px/1.5 -apple-system,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif}
 .wrap{max-width:860px;margin:0 auto;padding:16px}
-h1{font-size:20px;margin:4px 0 16px}
+h1{font-size:20px;margin:4px 0 16px;user-select:none}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
 .hidden{display:none!important}
 input{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%}
@@ -134,7 +134,14 @@ const $ = id => document.getElementById(id);
 let sb, user, viewStart = cycleStartOf(new Date()), data = {};
 
 function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),1400); }
-function show(id){ ['setup','login','app'].forEach(x => $(x).classList.toggle('hidden', x!==id)); }
+function show(id){ ['setup','login','app'].forEach(x => $(x).classList.toggle('hidden', x!==id || (x==='login' && !loginRevealed))); }
+
+/* ===== 隱藏入口：Ctrl+Shift 點標題才顯示登入框 ===== */
+let loginRevealed = false;
+document.querySelector('h1').addEventListener('click', e => {
+  if (!(e.ctrlKey && e.shiftKey) || user || !sb) return;
+  loginRevealed = true; show('login'); $('email').focus();
+});
 
 /* ===== 啟動 ===== */
 (async function init(){
@@ -151,7 +158,7 @@ $('btnLogin').onclick = async () => {
   user = d.user; start();
 };
 $('pw').addEventListener('keydown', e => { if (e.key==='Enter') $('btnLogin').click(); });
-$('logout').onclick = async () => { await sb.auth.signOut(); show('login'); };
+$('logout').onclick = async () => { await sb.auth.signOut(); user = null; loginRevealed = false; show('login'); };
 $('prev').onclick  = () => { viewStart = shiftCycle(viewStart,-1); load(); };
 $('next').onclick  = () => { viewStart = shiftCycle(viewStart, 1); load(); };
 $('today').onclick = () => { viewStart = cycleStartOf(new Date()); load(); };
