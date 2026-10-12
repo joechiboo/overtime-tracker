@@ -225,9 +225,12 @@ function render(){
     weeks[weeks.length-1].days.push(new Date(d));
   }
 
-  // 最後一天有填實際時數的日期；它（含）以前的日子全部收合
+  // 收合界線：最後一天有填實際時數的日期，與昨天，取較晚者
   let cutoff = '';
   for (const k in data) if (num(data[k].actual) !== null && k > cutoff) cutoff = k;
+  // 今天以前的日子也一併收合（例如沒上班的週六）
+  const yd = new Date(); yd.setDate(yd.getDate()-1);
+  if (fmt(yd) > cutoff) cutoff = fmt(yd);
 
   const dayRow = d => {
     const k = fmt(d), r = data[k] || {}, p = num(r.planned), a = num(r.actual);
