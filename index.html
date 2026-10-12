@@ -21,6 +21,8 @@ body{margin:0;background:var(--bg);color:var(--text);
 .wrap{max-width:860px;margin:0 auto;padding:16px}
 h1{font-size:20px;margin:4px 0 16px;user-select:none}
 h1 .mode{font-size:12px;font-weight:500;color:var(--accent);margin-left:8px}
+h1 .saved{font-size:12px;font-weight:400;color:var(--ok);margin-left:8px;opacity:0;transition:opacity .4s}
+h1 .saved.on{opacity:1}
 input:disabled{background:transparent;border-color:transparent;color:inherit;opacity:1}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
 .hidden{display:none!important}
@@ -61,7 +63,7 @@ td.n,th.n{display:none} /* 備註欄暫時隱藏 */
 </head>
 <body>
 <div class="wrap">
-  <h1 id="title">加班時數追蹤<span class="mode" id="mode"></span></h1>
+  <h1 id="title">加班時數追蹤<span class="mode" id="mode"></span><span class="saved" id="saved">✓ 已儲存</span></h1>
 
   <!-- 設定提示 -->
   <div id="setup" class="card hidden">
@@ -227,12 +229,9 @@ function render(){
     weeks[weeks.length-1].days.push(new Date(d));
   }
 
-  // 收合界線：最後一天有填實際時數的日期，與昨天，取較晚者
-  let cutoff = '';
-  for (const k in data) if (num(data[k].actual) !== null && k > cutoff) cutoff = k;
-  // 今天以前的日子也一併收合（例如沒上班的週六）
+  // 收合界線：昨天（含）以前全部收合；今天的列保留，填完不會立刻消失
   const yd = new Date(); yd.setDate(yd.getDate()-1);
-  if (fmt(yd) > cutoff) cutoff = fmt(yd);
+  const cutoff = fmt(yd);
 
   const dayRow = d => {
     const k = fmt(d), r = data[k] || {}, p = num(r.planned), a = num(r.actual);
@@ -272,7 +271,10 @@ function render(){
     for (const d of (open ? w.days : rest)) html += dayRow(d);
     html += `<tr class="sum"><td class="d">週小計</td><td>${h(wt.p)}</td><td>${h(wt.a)}</td><td>${diffCell(wt.p,wt.a,true)}</td><td class="n"></td></tr>` + cumRow();
   }
+  const ae = document.activeElement, fr = ae && ae.closest && ae.closest('tr[data-d]');
+  const keep = fr ? [fr.dataset.d, ae.dataset.f] : null;
   $('tbody').innerHTML = html;
+  if (keep){ const el = $('tbody').querySelector(`tr[data-d="${keep[0]}"] [data-f="${keep[1]}"]`); if (el) el.focus(); }
   $('tbody').querySelectorAll('tr[data-d] input').forEach(i => i.addEventListener('change', () => save(i.closest('tr'))));
   $('tbody').querySelectorAll('tr.appr').forEach(tr => tr.addEventListener('click', () => { expanded[tr.dataset.w] = !expanded[tr.dataset.w]; render(); }));
 }
@@ -299,7 +301,7 @@ async function save(tr){
     data[k] = row;
   }
   if (error) return toast('儲存失敗：' + error.message);
-  toast('已儲存');
+  const sv = $('saved'); sv.classList.add('on'); clearTimeout(sv._t); sv._t = setTimeout(() => sv.classList.remove('on'), 1500);
   render();
 }
 </script>
