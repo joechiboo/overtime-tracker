@@ -4,6 +4,7 @@ create table if not exists public.overtime_days (
   planned    numeric(4,1) check (planned between 0 and 12),   -- 預計加班時數
   actual     numeric(4,1) check (actual  between 0 and 12),   -- 實際加班時數
   note       text,
+  approved   boolean not null default false,                   -- 已審核
   updated_at timestamptz not null default now()
 );
 
