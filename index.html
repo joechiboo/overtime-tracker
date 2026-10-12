@@ -19,6 +19,8 @@ body{margin:0;background:var(--bg);color:var(--text);
   font:15px/1.5 -apple-system,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif}
 .wrap{max-width:860px;margin:0 auto;padding:16px}
 h1{font-size:20px;margin:4px 0 16px;user-select:none}
+h1 .mode{font-size:12px;font-weight:500;color:var(--accent);margin-left:8px}
+input:disabled{background:transparent;border-color:transparent;color:inherit;opacity:1}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
 .hidden{display:none!important}
 input{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%}
@@ -54,21 +56,11 @@ tr.sum td{font-weight:600;background:transparent;color:var(--muted);font-size:13
 </head>
 <body>
 <div class="wrap">
-  <h1>加班時數追蹤</h1>
+  <h1 id="title">加班時數追蹤<span class="mode" id="mode"></span></h1>
 
   <!-- 設定提示 -->
   <div id="setup" class="card hidden">
     請先在檔案開頭的 <code>SUPABASE_URL</code> 與 <code>SUPABASE_ANON_KEY</code> 填入你的專案設定。
-  </div>
-
-  <!-- 登入 -->
-  <div id="login" class="card hidden">
-    <div style="display:grid;gap:8px;max-width:320px">
-      <input id="email" type="email" placeholder="Email" autocomplete="username">
-      <input id="pw" type="password" placeholder="密碼" autocomplete="current-password">
-      <button id="btnLogin">登入</button>
-      <div id="loginMsg" class="muted"></div>
-    </div>
   </div>
 
   <!-- 主畫面 -->
@@ -103,7 +95,6 @@ tr.sum td{font-weight:600;background:transparent;color:var(--muted);font-size:13
         <button class="ghost" id="today">回到本期</button>
         <label class="muted row" style="gap:4px;cursor:pointer"><input type="checkbox" id="showSun" style="width:auto">顯示週日</label>
       </div>
-      <button class="ghost" id="logout">登出</button>
     </div>
   </div>
 </div>
@@ -131,34 +122,18 @@ const h = v => (Math.round(v*10)/10).toString();
 
 /* ===== 狀態 ===== */
 const $ = id => document.getElementById(id);
-let sb, user, viewStart = cycleStartOf(new Date()), data = {};
+let sb, viewStart = cycleStartOf(new Date()), data = {};
 
 function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),1400); }
-function show(id){ ['setup','login','app'].forEach(x => $(x).classList.toggle('hidden', x!==id || (x==='login' && !loginRevealed))); }
-
-/* ===== 隱藏入口：Ctrl+Shift 點標題才顯示登入框 ===== */
-let loginRevealed = false;
-document.querySelector('h1').addEventListener('click', e => {
-  if (!(e.ctrlKey && e.shiftKey) || user || !sb) return;
-  loginRevealed = true; show('login'); $('email').focus();
-});
+function show(id){ ['setup','app'].forEach(x => $(x).classList.toggle('hidden', x!==id)); }
 
 /* ===== 啟動 ===== */
-(async function init(){
+(function init(){
   if (SUPABASE_URL.includes('YOUR-PROJECT')) return show('setup');
-  sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-  const { data:{ session } } = await sb.auth.getSession();
-  if (session) { user = session.user; start(); } else show('login');
+  sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth:{ persistSession:false } });
+  start();
 })();
 
-$('btnLogin').onclick = async () => {
-  $('loginMsg').textContent = '登入中…';
-  const { data:d, error } = await sb.auth.signInWithPassword({ email:$('email').value.trim(), password:$('pw').value });
-  if (error) return $('loginMsg').textContent = '登入失敗：' + error.message;
-  user = d.user; start();
-};
-$('pw').addEventListener('keydown', e => { if (e.key==='Enter') $('btnLogin').click(); });
-$('logout').onclick = async () => { await sb.auth.signOut(); user = null; loginRevealed = false; show('login'); };
 $('prev').onclick  = () => { viewStart = shiftCycle(viewStart,-1); load(); };
 $('next').onclick  = () => { viewStart = shiftCycle(viewStart, 1); load(); };
 $('today').onclick = () => { viewStart = cycleStartOf(new Date()); load(); };
@@ -171,6 +146,17 @@ $('showSun').onchange = e => {
   try { localStorage.setItem('ot_showSun', showSun ? '1' : '0'); } catch(e){}
   render();
 };
+
+/* ===== 編輯模式：Ctrl+Shift 點標題切換（預設唯讀） ===== */
+let editable = false;
+try { editable = localStorage.getItem('ot_edit') === '1'; } catch(e){}
+$('title').addEventListener('click', e => {
+  if (!(e.ctrlKey && e.shiftKey)) return;
+  editable = !editable;
+  try { localStorage.setItem('ot_edit', editable ? '1' : '0'); } catch(e){}
+  toast(editable ? '已進入編輯模式' : '已切回唯讀');
+  render();
+});
 
 function start(){ show('app'); load(); }
 
@@ -209,6 +195,8 @@ function stat(k, v, limit){
 
 /* ===== 畫面 ===== */
 function render(){
+  $('mode').textContent = editable ? '編輯中' : '';
+  const dis = editable ? '' : 'disabled';
   const s = viewStart, e = cycleEnd(s), rs = shiftCycle(s,-2);
   $('cycleLabel').textContent = `${s.getFullYear()}/${md(s)} – ${e.getFullYear()}/${md(e)}`;
 
@@ -239,10 +227,10 @@ function render(){
     const overDay = !we && a !== null && a > 4;
     html += `<tr data-d="${k}" class="${we?'we':''} ${k===todayStr?'today':''}">
       <td class="d">${md(d)}（${WD[d.getDay()]}）</td>
-      <td><input type="number" step="0.5" min="0" max="12" data-f="planned" value="${p ?? ''}"></td>
-      <td><input type="number" step="0.5" min="0" max="12" data-f="actual" value="${a ?? ''}" class="${overDay?'over':''}"></td>
+      <td><input type="number" step="0.5" min="0" max="12" data-f="planned" value="${p ?? ''}" ${dis}></td>
+      <td><input type="number" step="0.5" min="0" max="12" data-f="actual" value="${a ?? ''}" ${dis} class="${overDay?'over':''}"></td>
       <td>${a===null ? '' : diffCell(p ?? 0, a)}</td>
-      <td class="n"><input type="text" data-f="note" value="${(r.note||'').replace(/"/g,'&quot;')}"></td>
+      <td class="n"><input type="text" data-f="note" value="${(r.note||'').replace(/"/g,'&quot;')}" ${dis}></td>
     </tr>`;
   }
   flush();
@@ -257,17 +245,18 @@ function diffCell(p, a, plain){
 
 /* ===== 儲存 ===== */
 async function save(tr){
+  if (!editable) return;
   const k = tr.dataset.d, get = f => tr.querySelector(`[data-f="${f}"]`).value;
   const planned = num(get('planned')), actual = num(get('actual')), note = get('note').trim() || null;
   for (const v of [planned, actual]) if (v !== null && (isNaN(v) || v < 0 || v > 12)) return toast('時數需介於 0–12');
 
   let error;
   if (planned === null && actual === null && !note){
-    ({ error } = await sb.from('overtime_days').delete().eq('user_id', user.id).eq('work_date', k));
+    ({ error } = await sb.from('overtime_days').delete().eq('work_date', k));
     delete data[k];
   } else {
-    const row = { user_id:user.id, work_date:k, planned, actual, note, updated_at:new Date().toISOString() };
-    ({ error } = await sb.from('overtime_days').upsert(row, { onConflict:'user_id,work_date' }));
+    const row = { work_date:k, planned, actual, note, updated_at:new Date().toISOString() };
+    ({ error } = await sb.from('overtime_days').upsert(row, { onConflict:'work_date' }));
     data[k] = row;
   }
   if (error) return toast('儲存失敗：' + error.message);
