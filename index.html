@@ -87,7 +87,7 @@ tr.sum td{font-weight:600;background:transparent;color:var(--muted);font-size:13
 
     <div class="card" style="overflow-x:auto">
       <table>
-        <thead><tr><th style="text-align:left">日期</th><th>預計</th><th>實際</th><th>差異</th><th class="n">備註</th><th>審核</th></tr></thead>
+        <thead><tr><th style="text-align:left">日期</th><th>預計</th><th>實際</th><th>差異</th><th class="n">備註</th></tr></thead>
         <tbody id="tbody"></tbody>
       </table>
       <div class="muted" style="margin-top:8px">單日正常工時加延長工時不得超過 12 小時，平日加班超過 4 小時以紅字提示。</div>
@@ -168,7 +168,7 @@ function start(){ show('app'); load(); }
 async function load(){
   const from = fmt(shiftCycle(viewStart,-2)), to = fmt(cycleEnd(viewStart));
   const { data:rows, error } = await sb.from('overtime_days')
-    .select('work_date,planned,actual,note,approved')
+    .select('work_date,planned,actual,note')
     .gte('work_date', from).lte('work_date', to);
   if (error) return toast('讀取失敗：' + error.message);
   data = {};
@@ -232,19 +232,19 @@ function render(){
       const r = data[fmt(d)] || {};
       const p = num(r.planned), a = num(r.actual);
       wP += p ?? 0; wA += a ?? 0;
-      if (r.approved){ aP += p ?? 0; aA += a ?? 0; aN++; aFirst = aFirst || d; aLast = d; }
+      if (a !== null){ aP += p ?? 0; aA += a ?? 0; aN++; aFirst = aFirst || d; aLast = d; }
     }
     const open = !!expanded[w.key];
     if (aN){
       html += `<tr class="appr ${open?'open':''}" data-w="${w.key}">
         <td class="d">已審核 ${aN} 天（${md(aFirst)}${aN>1?'–'+md(aLast):''}）</td>
-        <td>${h(aP)}</td><td>${h(aA)}</td><td>${diffCell(aP,aA,true)}</td><td class="n"></td><td>✓</td></tr>`;
+        <td>${h(aP)}</td><td>${h(aA)}</td><td>${diffCell(aP,aA,true)}</td><td class="n"></td></tr>`;
     }
     for (const d of w.days){
       const k = fmt(d), r = data[k] || {}, p = num(r.planned), a = num(r.actual);
-      if (r.approved && !open) continue;
+      if (a !== null && !open) continue;
       // 週日預設隱藏；若當天已有資料則仍顯示，避免漏看
-      if (d.getDay()===0 && !showSun && p===null && a===null && !r.note && !r.approved) continue;
+      if (d.getDay()===0 && !showSun && p===null && a===null && !r.note) continue;
       const past = k <= todayStr;
       const we = d.getDay()===0 || d.getDay()===6;
       const overDay = !we && a !== null && a > 4;
@@ -255,10 +255,9 @@ function render(){
         <td><input type="number" step="0.5" min="0" max="12" data-f="actual" value="${a ?? ''}" ${disPast} class="${overDay?'over':''}"></td>
         <td>${a===null ? '' : diffCell(p ?? 0, a)}</td>
         <td class="n"><input type="text" data-f="note" value="${(r.note||'').replace(/"/g,'&quot;')}" ${dis}></td>
-        <td>${past ? `<input type="checkbox" data-f="approved" style="width:auto" ${r.approved?'checked':''} ${disPast}>` : ''}</td>
       </tr>`;
     }
-    html += `<tr class="sum"><td class="d">週小計</td><td>${h(wP)}</td><td>${h(wA)}</td><td>${diffCell(wP,wA,true)}</td><td class="n"></td><td></td></tr>`;
+    html += `<tr class="sum"><td class="d">週小計</td><td>${h(wP)}</td><td>${h(wA)}</td><td>${diffCell(wP,wA,true)}</td><td class="n"></td></tr>`;
   }
   $('tbody').innerHTML = html;
   $('tbody').querySelectorAll('tr[data-d] input').forEach(i => i.addEventListener('change', () => save(i.closest('tr'))));
@@ -274,16 +273,15 @@ function diffCell(p, a, plain){
 async function save(tr){
   if (!editable) return;
   const k = tr.dataset.d, get = f => tr.querySelector(`[data-f="${f}"]`).value;
-  const ap = tr.querySelector('[data-f="approved"]'), approved = ap ? ap.checked : !!(data[k] && data[k].approved);
   const planned = num(get('planned')), actual = num(get('actual')), note = get('note').trim() || null;
   for (const v of [planned, actual]) if (v !== null && (isNaN(v) || v < 0 || v > 12)) return toast('時數需介於 0–12');
 
   let error;
-  if (planned === null && actual === null && !note && !approved){
+  if (planned === null && actual === null && !note){
     ({ error } = await sb.from('overtime_days').delete().eq('work_date', k));
     delete data[k];
   } else {
-    const row = { work_date:k, planned, actual, note, approved, updated_at:new Date().toISOString() };
+    const row = { work_date:k, planned, actual, note, updated_at:new Date().toISOString() };
     ({ error } = await sb.from('overtime_days').upsert(row, { onConflict:'work_date' }));
     data[k] = row;
   }
