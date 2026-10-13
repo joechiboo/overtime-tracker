@@ -263,7 +263,7 @@ function render(){
 
   // 週累計：已有實際用實際，否則用預計，自本期起累加
   let html = '', cum = 0;
-  const cumRow = () => `<tr class="cum"><td class="d">週累計（實際＋預計）</td><td colspan="3" class="${cum > MONTH_LIMIT ? 'over' : ''}">${h(cum)} / ${MONTH_LIMIT} hr</td><td class="n"></td></tr>`;
+  const cumRow = () => `<tr class="cum"><td class="d">週累計（實際＋預計）</td><td colspan="3" class="${cum > effCap ? 'over' : ''}">${h(cum)} / ${h(effCap)} hr</td><td class="n"></td></tr>`;
   for (const w of weeks){
     const done = w.days.filter(d => fmt(d) <= cutoff);
     const rest = w.days.filter(d => fmt(d) > cutoff);
