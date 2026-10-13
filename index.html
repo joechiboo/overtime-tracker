@@ -81,10 +81,10 @@ td.n,th.n{display:none} /* 備註欄暫時隱藏 */
     <div class="card">
       <div class="row" style="justify-content:space-between;margin-bottom:12px">
         <div>
-          <div class="muted">本期還可加班</div>
+          <div class="muted">本期還可加班（已扣本期預計）</div>
           <div class="big" id="remain">–</div>
         </div>
-        <div class="muted" style="text-align:right">月上限 54 hr<br>近三期上限 138 hr</div>
+        <div class="muted" style="text-align:right" id="capInfo">月上限 54 hr<br>近三期上限 138 hr</div>
       </div>
       <div class="stats" id="stats"></div>
     </div>
@@ -194,7 +194,7 @@ function sumRange(s, e){
 }
 
 function stat(k, v, limit){
-  const pct = Math.min(100, v/limit*100);
+  const pct = limit > 0 ? Math.min(100, v/limit*100) : 100;
   const cls = v > limit ? 'bad' : pct >= 85 ? 'warn' : '';
   return `<div class="stat"><div class="k">${k}</div>
     <div class="v ${v>limit?'over':''}">${h(v)} <small>/ ${limit}</small></div>
@@ -209,13 +209,20 @@ function render(){
   $('cycleLabel').textContent = `${s.getFullYear()}/${md(s)} – ${e.getFullYear()}/${md(e)}`;
 
   const cur = sumRange(s, e), roll = sumRange(rs, e);
-  const remain = Math.min(MONTH_LIMIT - cur.act, ROLL_LIMIT - roll.act);
+  // 本期有效上限：月上限 54，但近三期合計不得超過 138，故需扣掉前兩期已用的時數
+  const prevEnd = new Date(s); prevEnd.setDate(prevEnd.getDate()-1);
+  const prev = sumRange(rs, prevEnd);
+  const effCap = Math.max(0, Math.min(MONTH_LIMIT, ROLL_LIMIT - prev.act));
+  const remain = effCap - cur.proj;   // 前兩期看實際，本期看實際＋未發生的預計
+  $('capInfo').innerHTML = effCap < MONTH_LIMIT
+    ? `本期上限 <b>${h(effCap)}</b> hr<br>（前兩期已用 ${h(prev.act)}，138 − ${h(prev.act)}）`
+    : `月上限 ${MONTH_LIMIT} hr<br>近三期上限 ${ROLL_LIMIT} hr`;
   $('remain').textContent = remain <= 0 ? '0 hr（已達上限）' : `${h(remain)} hr`;
   $('remain').className = 'big' + (remain <= 0 ? ' over' : '');
 
   $('stats').innerHTML =
-    stat('本期實際', cur.act, MONTH_LIMIT) +
-    stat('本期預估（實際＋未發生的預計）', cur.proj, MONTH_LIMIT) +
+    stat('本期實際', cur.act, effCap) +
+    stat('本期預估（實際＋未發生的預計）', cur.proj, effCap) +
     stat(`近三期實際（${md(rs)} 起）`, roll.act, ROLL_LIMIT) +
     stat('近三期預估', roll.proj, ROLL_LIMIT) +
     `<div class="stat"><div class="k">本期預計合計</div><div class="v">${h(cur.plan)} <small>hr</small></div></div>`;
@@ -256,7 +263,7 @@ function render(){
 
   // 週累計：已有實際用實際，否則用預計，自本期起累加
   let html = '', cum = 0;
-  const cumRow = () => `<tr class="cum"><td class="d">週累計（實際＋預計）</td><td colspan="3" class="${cum > MONTH_LIMIT ? 'over' : ''}">${h(cum)} / ${MONTH_LIMIT} hr</td><td class="n"></td></tr>`;
+  const cumRow = () => `<tr class="cum"><td class="d">週累計（實際＋預計）</td><td colspan="3" class="${cum > effCap ? 'over' : ''}">${h(cum)} / ${h(effCap)} hr</td><td class="n"></td></tr>`;
   for (const w of weeks){
     const done = w.days.filter(d => fmt(d) <= cutoff);
     const rest = w.days.filter(d => fmt(d) > cutoff);
