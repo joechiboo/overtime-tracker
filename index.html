@@ -81,7 +81,7 @@ td.n,th.n{display:none} /* 備註欄暫時隱藏 */
     <div class="card">
       <div class="row" style="justify-content:space-between;margin-bottom:12px">
         <div>
-          <div class="muted">本期還可加班</div>
+          <div class="muted">本期還可加班（已扣本期預計）</div>
           <div class="big" id="remain">–</div>
         </div>
         <div class="muted" style="text-align:right" id="capInfo">月上限 54 hr<br>近三期上限 138 hr</div>
@@ -213,7 +213,7 @@ function render(){
   const prevEnd = new Date(s); prevEnd.setDate(prevEnd.getDate()-1);
   const prev = sumRange(rs, prevEnd);
   const effCap = Math.max(0, Math.min(MONTH_LIMIT, ROLL_LIMIT - prev.act));
-  const remain = effCap - cur.act;
+  const remain = effCap - cur.proj;   // 前兩期看實際，本期看實際＋未發生的預計
   $('capInfo').innerHTML = effCap < MONTH_LIMIT
     ? `本期上限 <b>${h(effCap)}</b> hr<br>（前兩期已用 ${h(prev.act)}，138 − ${h(prev.act)}）`
     : `月上限 ${MONTH_LIMIT} hr<br>近三期上限 ${ROLL_LIMIT} hr`;
