@@ -10,7 +10,9 @@
 - 本期還可加班 = min(54 − 本期實際, 138 − 近三期實際)
 - 預估：已填實際用實際，未填用預計
 - 週一至週五顯示；六日預設隱藏，可切換「顯示六日」（有資料的六日一律顯示）
+- 加班單：有加班的日子顯示「未填」（橘框），編輯模式點一下變「已填」（綠底）；收合列與週小計顯示未填天數
 - 平日實際加班超過 4 小時以紅字提示（單日工時上限 12 小時）
+- 加班單：有加班的日子顯示「未填」（橘框），編輯模式下點一下變「已填」（綠底）；收合列與週小計顯示未填天數
 
 ## 使用
 
@@ -20,7 +22,7 @@
 
 ## 設定
 
-1. 在 Supabase 專案的 SQL Editor 執行 `schema.sql`（已建過登入版者，依序執行 `migrations/` 內的檔案）
+1. 在 Supabase 專案的 SQL Editor 執行 `schema.sql`（已建過登入版者，依序執行 `migrations/` 內的檔案；新增加班單欄位執行 `003_add_filed.sql`）
 2. 將 `index.html` 開頭的 `SUPABASE_URL`、`SUPABASE_ANON_KEY` 換成專案值（publishable／anon key，不要用 secret／service_role key）
 3. Settings → Pages → Deploy from branch `main` / root
 
