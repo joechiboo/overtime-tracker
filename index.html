@@ -257,13 +257,13 @@ function render(){
       <td><input type="number" step="0.5" min="0" max="12" data-f="planned" value="${p ?? ''}" ${dis}></td>
       <td><input type="number" step="0.5" min="0" max="12" data-f="actual" value="${a ?? ''}" ${disPast} class="${overDay?'over':''}"></td>
       <td>${a===null ? '' : diffCell(p ?? 0, a)}</td>
-      <td>${(a ?? p) > 0 ? `<button class="pill ${r.filed?'on':''}" data-filed ${dis}>${r.filed?'已填':'未填'}</button>` : ''}</td>
+      <td>${a > 0 ? `<button class="pill ${r.filed?'on':''}" data-filed ${dis}>${r.filed?'已填':'未填'}</button>` : ''}</td>
       <td class="n"><input type="text" data-f="note" value="${(r.note||'').replace(/"/g,'&quot;')}" ${dis}></td>
     </tr>`;
   };
   const sums = days => days.reduce((t,d) => { const r = data[fmt(d)] || {}; t.p += num(r.planned) ?? 0; t.a += num(r.actual) ?? 0; return t; }, { p:0, a:0 });
-  // 有加班（實際或預計 > 0）但尚未填加班單的天數
-  const unfiled = days => days.filter(d => { const r = data[fmt(d)] || {}; return (num(r.actual) ?? num(r.planned) ?? 0) > 0 && !r.filed; }).length;
+  // 有實際加班但尚未填加班單的天數
+  const unfiled = days => days.filter(d => { const r = data[fmt(d)] || {}; return num(r.actual) > 0 && !r.filed; }).length;
   const unfiledCell = days => { const n = unfiled(days); return n ? `<span class="unfiled">${n} 未填</span>` : ''; };
   const range = days => md(days[0]) + (days.length > 1 ? '–' + md(days[days.length-1]) : '');
   const foldRow = (w, label, t, days, open) => `<tr class="appr ${open?'open':''}" data-w="${w}">
