@@ -58,6 +58,10 @@ tr.sum td{font-weight:600;background:transparent;color:var(--muted);font-size:13
 .toast{position:fixed;right:16px;bottom:16px;background:var(--text);color:var(--bg);padding:8px 14px;border-radius:8px;opacity:0;transition:.2s}
 .toast.show{opacity:.92}
 .muted{color:var(--muted);font-size:13px}
+.pill{padding:2px 10px;border-radius:999px;font-size:12px;background:transparent;border:1px solid var(--warn);color:var(--warn)}
+.pill.on{background:var(--ok);border-color:var(--ok);color:#fff}
+.pill:disabled{cursor:default}
+.unfiled{color:var(--warn)}
 td.n,th.n{display:none} /* 備註欄暫時隱藏 */
 </style>
 </head>
@@ -91,7 +95,7 @@ td.n,th.n{display:none} /* 備註欄暫時隱藏 */
 
     <div class="card" style="overflow-x:auto">
       <table>
-        <thead><tr><th style="text-align:left">日期</th><th>預計</th><th>實際</th><th>差異</th><th class="n">備註</th></tr></thead>
+        <thead><tr><th style="text-align:left">日期</th><th>預計</th><th>實際</th><th>差異</th><th>加班單</th><th class="n">備註</th></tr></thead>
         <tbody id="tbody"></tbody>
       </table>
       <div class="muted" style="margin-top:8px">單日正常工時加延長工時不得超過 12 小時，平日加班超過 4 小時以紅字提示。</div>
@@ -172,7 +176,7 @@ function start(){ show('app'); load(); }
 async function load(){
   const from = fmt(shiftCycle(viewStart,-2)), to = fmt(cycleEnd(viewStart));
   const { data:rows, error } = await sb.from('overtime_days')
-    .select('work_date,planned,actual,note')
+    .select('work_date,planned,actual,note,filed')
     .gte('work_date', from).lte('work_date', to);
   if (error) return toast('讀取失敗：' + error.message);
   data = {};
@@ -253,17 +257,21 @@ function render(){
       <td><input type="number" step="0.5" min="0" max="12" data-f="planned" value="${p ?? ''}" ${dis}></td>
       <td><input type="number" step="0.5" min="0" max="12" data-f="actual" value="${a ?? ''}" ${disPast} class="${overDay?'over':''}"></td>
       <td>${a===null ? '' : diffCell(p ?? 0, a)}</td>
+      <td>${(a ?? p) > 0 ? `<button class="pill ${r.filed?'on':''}" data-filed ${dis}>${r.filed?'已填':'未填'}</button>` : ''}</td>
       <td class="n"><input type="text" data-f="note" value="${(r.note||'').replace(/"/g,'&quot;')}" ${dis}></td>
     </tr>`;
   };
   const sums = days => days.reduce((t,d) => { const r = data[fmt(d)] || {}; t.p += num(r.planned) ?? 0; t.a += num(r.actual) ?? 0; return t; }, { p:0, a:0 });
+  // 有加班（實際或預計 > 0）但尚未填加班單的天數
+  const unfiled = days => days.filter(d => { const r = data[fmt(d)] || {}; return (num(r.actual) ?? num(r.planned) ?? 0) > 0 && !r.filed; }).length;
+  const unfiledCell = days => { const n = unfiled(days); return n ? `<span class="unfiled">${n} 未填</span>` : ''; };
   const range = days => md(days[0]) + (days.length > 1 ? '–' + md(days[days.length-1]) : '');
-  const foldRow = (w, label, t, open) => `<tr class="appr ${open?'open':''}" data-w="${w}">
-      <td class="d">${label}</td><td>${h(t.p)}</td><td>${h(t.a)}</td><td>${diffCell(t.p,t.a,true)}</td><td class="n"></td></tr>`;
+  const foldRow = (w, label, t, days, open) => `<tr class="appr ${open?'open':''}" data-w="${w}">
+      <td class="d">${label}</td><td>${h(t.p)}</td><td>${h(t.a)}</td><td>${diffCell(t.p,t.a,true)}</td><td>${unfiledCell(days)}</td><td class="n"></td></tr>`;
 
   // 週累計：已有實際用實際，否則用預計，自本期起累加
   let html = '', cum = 0;
-  const cumRow = () => `<tr class="cum"><td class="d">週累計（實際＋預計）</td><td colspan="3" class="${cum > effCap ? 'over' : ''}">${h(cum)} / ${h(effCap)} hr</td><td class="n"></td></tr>`;
+  const cumRow = () => `<tr class="cum"><td class="d">週累計（實際＋預計）</td><td colspan="4" class="${cum > effCap ? 'over' : ''}">${h(cum)} / ${h(effCap)} hr</td><td class="n"></td></tr>`;
   for (const w of weeks){
     const done = w.days.filter(d => fmt(d) <= cutoff);
     const rest = w.days.filter(d => fmt(d) > cutoff);
@@ -271,18 +279,19 @@ function render(){
     cum += w.days.reduce((t,d) => { const r = data[fmt(d)] || {}; return t + (num(r.actual) ?? num(r.planned) ?? 0); }, 0);
     if (done.length === w.days.length && !open){
       // 整週已過：只留一列週小計
-      html += foldRow(w.key, `週小計 ${range(w.days)}`, wt, false) + cumRow();
+      html += foldRow(w.key, `週小計 ${range(w.days)}`, wt, w.days, false) + cumRow();
       continue;
     }
-    if (done.length) html += foldRow(w.key, `已審核 ${range(done)}`, sums(done), open);
+    if (done.length) html += foldRow(w.key, `已審核 ${range(done)}`, sums(done), done, open);
     for (const d of (open ? w.days : rest)) html += dayRow(d);
-    html += `<tr class="sum"><td class="d">週小計</td><td>${h(wt.p)}</td><td>${h(wt.a)}</td><td>${diffCell(wt.p,wt.a,true)}</td><td class="n"></td></tr>` + cumRow();
+    html += `<tr class="sum"><td class="d">週小計</td><td>${h(wt.p)}</td><td>${h(wt.a)}</td><td>${diffCell(wt.p,wt.a,true)}</td><td>${unfiledCell(w.days)}</td><td class="n"></td></tr>` + cumRow();
   }
   const ae = document.activeElement, fr = ae && ae.closest && ae.closest('tr[data-d]');
   const keep = fr ? [fr.dataset.d, ae.dataset.f] : null;
   $('tbody').innerHTML = html;
   if (keep){ const el = $('tbody').querySelector(`tr[data-d="${keep[0]}"] [data-f="${keep[1]}"]`); if (el) el.focus(); }
   $('tbody').querySelectorAll('tr[data-d] input').forEach(i => i.addEventListener('change', () => save(i.closest('tr'))));
+  $('tbody').querySelectorAll('[data-filed]').forEach(b => b.addEventListener('click', () => toggleFiled(b.closest('tr').dataset.d)));
   $('tbody').querySelectorAll('tr.appr').forEach(tr => tr.addEventListener('click', () => { expanded[tr.dataset.w] = !expanded[tr.dataset.w]; render(); }));
 }
 
@@ -303,14 +312,28 @@ async function save(tr){
     ({ error } = await sb.from('overtime_days').delete().eq('work_date', k));
     delete data[k];
   } else {
-    const row = { work_date:k, planned, actual, note, updated_at:new Date().toISOString() };
+    const filed = !!(data[k] && data[k].filed);
+    const row = { work_date:k, planned, actual, note, filed, updated_at:new Date().toISOString() };
     ({ error } = await sb.from('overtime_days').upsert(row, { onConflict:'work_date' }));
     data[k] = row;
   }
   if (error) return toast('儲存失敗：' + error.message);
-  const sv = $('saved'); sv.classList.add('on'); clearTimeout(sv._t); sv._t = setTimeout(() => sv.classList.remove('on'), 1500);
+  flashSaved();
   render();
 }
+
+/* ===== 加班單：點一下切換 未填／已填 ===== */
+async function toggleFiled(k){
+  if (!editable || !data[k]) return;
+  const filed = !data[k].filed;
+  const { error } = await sb.from('overtime_days').update({ filed, updated_at:new Date().toISOString() }).eq('work_date', k);
+  if (error) return toast('儲存失敗：' + error.message);
+  data[k].filed = filed;
+  flashSaved();
+  render();
+}
+
+function flashSaved(){ const sv = $('saved'); sv.classList.add('on'); clearTimeout(sv._t); sv._t = setTimeout(() => sv.classList.remove('on'), 1500); }
 </script>
 </body>
 </html>

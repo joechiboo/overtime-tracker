@@ -5,6 +5,7 @@ create table if not exists public.overtime_days (
   actual     numeric(4,1) check (actual  between 0 and 12),   -- 實際加班時數
   note       text,
   approved   boolean not null default false,                   -- 已審核
+  filed      boolean not null default false,                   -- 已填加班單
   updated_at timestamptz not null default now()
 );
 
