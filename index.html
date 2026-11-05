@@ -160,11 +160,15 @@ $('showSun').onchange = e => {
   render();
 };
 
-/* ===== 編輯模式：Ctrl+Shift 點標題切換（預設唯讀） ===== */
-let editable = false;
+/* ===== 編輯模式：Ctrl+Shift 點標題，或手機連點標題 5 下切換（預設唯讀） ===== */
+let editable = false, taps = 0, tapT;
 try { editable = localStorage.getItem('ot_edit') === '1'; } catch(e){}
 $('title').addEventListener('click', e => {
-  if (!(e.ctrlKey && e.shiftKey)) return;
+  if (!(e.ctrlKey && e.shiftKey)){
+    clearTimeout(tapT); tapT = setTimeout(() => taps = 0, 1500);
+    if (++taps < 5) return;
+  }
+  taps = 0;
   editable = !editable;
   try { localStorage.setItem('ot_edit', editable ? '1' : '0'); } catch(e){}
   toast(editable ? '已進入編輯模式' : '已切回唯讀');
