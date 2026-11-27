@@ -45,7 +45,10 @@ th,td{padding:6px 4px;border-bottom:1px solid var(--line);text-align:center}
 th{font-size:13px;color:var(--muted);font-weight:500}
 td.d{text-align:left;white-space:nowrap}
 td input{padding:5px 6px;text-align:center;max-width:76px}
-td.n input{text-align:left;max-width:none}
+th{white-space:nowrap}
+.pill{white-space:nowrap}
+td.d .note{font-size:12px;color:var(--muted);white-space:pre-wrap}
+td.d input.note{display:block;margin-top:4px;padding:3px 6px;font-size:12px;text-align:left;max-width:none;min-width:120px}
 tr.we td{background:var(--weekend)}
 tr.today td{background:var(--today)}
 tr.appr td{color:var(--muted);cursor:pointer;font-size:13px}
@@ -62,7 +65,6 @@ tr.sum td{font-weight:600;background:transparent;color:var(--muted);font-size:13
 .pill.on{background:var(--ok);border-color:var(--ok);color:#fff}
 .pill:disabled{cursor:default}
 .unfiled{color:var(--warn)}
-td.n,th.n{display:none} /* 備註欄暫時隱藏 */
 </style>
 </head>
 <body>
@@ -96,7 +98,7 @@ td.n,th.n{display:none} /* 備註欄暫時隱藏 */
 
     <div class="card" style="overflow-x:auto">
       <table>
-        <thead><tr><th style="text-align:left">日期</th><th>預計</th><th>實際</th><th>差異</th><th>加班單</th><th class="n">備註</th></tr></thead>
+        <thead><tr><th style="text-align:left">日期</th><th>預計</th><th>實際</th><th>差異</th><th>加班單</th></tr></thead>
         <tbody id="tbody"></tbody>
       </table>
       <div class="muted" style="margin-top:8px">單日正常工時加延長工時不得超過 12 小時，平日加班超過 4 小時以紅字提示。</div>
@@ -130,6 +132,7 @@ const shiftCycle = (s,n) => new Date(s.getFullYear(), s.getMonth()+n, CYCLE_DAY)
 const cycleEnd = s => new Date(s.getFullYear(), s.getMonth()+1, CYCLE_DAY-1);
 const mondayOf = d => { const x = new Date(d); x.setDate(x.getDate() - ((x.getDay()+6)%7)); return fmt(x); };
 const num = v => (v === null || v === undefined || v === '') ? null : Number(v);
+const esc = v => String(v ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const h = v => (Math.round(v*10)/10).toString();
 
 /* ===== 狀態 ===== */
@@ -261,12 +264,13 @@ function render(){
     const overDay = !we && a !== null && a > 4;
     const disPast = (editable && past) ? '' : 'disabled';
     return `<tr data-d="${k}" class="${we?'we':''} ${k===todayStr?'today':''}">
-      <td class="d">${md(d)}（${WD[d.getDay()]}）</td>
+      <td class="d">${md(d)}（${WD[d.getDay()]}）${editable
+        ? `<input type="text" class="note" data-f="note" placeholder="備註（原因）" value="${esc(r.note)}">`
+        : r.note ? `<div class="note">${esc(r.note)}</div>` : ''}</td>
       <td><input type="number" step="0.5" min="0" max="12" data-f="planned" value="${p ?? ''}" ${dis}></td>
       <td><input type="number" step="0.5" min="0" max="12" data-f="actual" value="${a ?? ''}" ${disPast} class="${overDay?'over':''}"></td>
       <td>${a===null ? '' : diffCell(p ?? 0, a)}</td>
       <td>${a > 0 ? `<button class="pill ${r.filed?'on':''}" data-filed ${dis}>${r.filed?'已填':'未填'}</button>` : ''}</td>
-      <td class="n"><input type="text" data-f="note" value="${(r.note||'').replace(/"/g,'&quot;')}" ${dis}></td>
     </tr>`;
   };
   const sums = days => days.reduce((t,d) => { const r = data[fmt(d)] || {}; t.p += num(r.planned) ?? 0; t.a += num(r.actual) ?? 0; return t; }, { p:0, a:0 });
@@ -275,11 +279,11 @@ function render(){
   const unfiledCell = days => { const n = unfiled(days); return n ? `<span class="unfiled">${n} 未填</span>` : ''; };
   const range = days => md(days[0]) + (days.length > 1 ? '–' + md(days[days.length-1]) : '');
   const foldRow = (w, label, t, days, open) => `<tr class="appr ${open?'open':''}" data-w="${w}">
-      <td class="d">${label}</td><td>${h(t.p)}</td><td>${h(t.a)}</td><td>${diffCell(t.p,t.a,true)}</td><td>${unfiledCell(days)}</td><td class="n"></td></tr>`;
+      <td class="d">${label}</td><td>${h(t.p)}</td><td>${h(t.a)}</td><td>${diffCell(t.p,t.a,true)}</td><td>${unfiledCell(days)}</td></tr>`;
 
   // 週累計：已有實際用實際，否則用預計，自本期起累加
   let html = '', cum = 0;
-  const cumRow = () => `<tr class="cum"><td class="d">週累計（實際＋預計）</td><td colspan="4" class="${cum > effCap ? 'over' : ''}">${h(cum)} / ${h(effCap)} hr</td><td class="n"></td></tr>`;
+  const cumRow = () => `<tr class="cum"><td class="d">週累計（實際＋預計）</td><td colspan="4" class="${cum > effCap ? 'over' : ''}">${h(cum)} / ${h(effCap)} hr</td></tr>`;
   for (const w of weeks){
     const done = w.days.filter(d => fmt(d) <= cutoff);
     const rest = w.days.filter(d => fmt(d) > cutoff);
@@ -292,7 +296,7 @@ function render(){
     }
     if (done.length) html += foldRow(w.key, `已審核 ${range(done)}`, sums(done), done, open);
     for (const d of (open ? w.days : rest)) html += dayRow(d);
-    html += `<tr class="sum"><td class="d">週小計</td><td>${h(wt.p)}</td><td>${h(wt.a)}</td><td>${diffCell(wt.p,wt.a,true)}</td><td>${unfiledCell(w.days)}</td><td class="n"></td></tr>` + cumRow();
+    html += `<tr class="sum"><td class="d">週小計</td><td>${h(wt.p)}</td><td>${h(wt.a)}</td><td>${diffCell(wt.p,wt.a,true)}</td><td>${unfiledCell(w.days)}</td></tr>` + cumRow();
   }
   const ae = document.activeElement, fr = ae && ae.closest && ae.closest('tr[data-d]');
   const keep = fr ? [fr.dataset.d, ae.dataset.f] : null;
